@@ -130,11 +130,13 @@ func keyStore() (string, error) {
 	return keyDir, nil
 }
 
-func new_repo(repo_name string) {
+func new_repo(repo_name string) (string, error) {
+	// create a new password store by name
 	storeDir := path.Join(xdg.DataHome, "passa-gui", repo_name)
-	// error if existing
-	// mkdirectory
-	_ = storeDir
+	if err := os.MkdirAll(storeDir, 0o700); err != nil {
+		return "", fmt.Errorf("create key store %q: %w", storeDir, err)
+	}
+	return storeDir, nil
 }
 func new_key(key_name string) {
 	keyDir, err := keyStore()
