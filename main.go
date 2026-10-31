@@ -119,33 +119,52 @@ func gitpull(name, remoteLoc string) {
 	}
 }
 
-func keyStore() (string) {
-	// TODO: check environment for PASSA_STORE_KEYS
-	keyDir := path.Join(xdg.DataHome, "passa-gui", ".keys")
-	// mkdir if missing
-	return keyDir
+func keyStore() (string, error) {
+	keyDir := os.Getenv("PASSA_STORE_KEYS")
+	if keyDir == "" {
+		keyDir = path.Join(xdg.DataHome, "passa-gui", ".keys")
+	}
+	if err := os.MkdirAll(keyDir, 0o700); err != nil {
+		return "", fmt.Errorf("create key store %q: %w", keyDir, err)
+	}
+	return keyDir, nil
 }
 
 func new_repo(repo_name string) {
-	storeDir := path.Join(xdg.DataHome, "passa-gui", name)
+	storeDir := path.Join(xdg.DataHome, "passa-gui", repo_name)
 	// error if existing
 	// mkdirectory
+	_ = storeDir
 }
 func new_key(key_name string) {
-	keyDir = keyStore()
-	// mkdirectory if missing
+	keyDir, err := keyStore()
+	if err != nil {
+		log.Printf("Failed to create key store: %v", err)
+		return
+	}
 	// error if key exists
 	// generate new key, save to keyDir/key_name keyDir/key_name.pub
+	_, _ = keyDir, key_name
 }
 func new_secret(storeDir string, key_names []string, secret_name string, secret string) {
-	keyDir := path.Join(xdg.DataHome, "passa-gui", ".keys")
+	keyDir, err := keyStore()
+	if err != nil {
+		log.Printf("Failed to access key store: %v", err)
+		return
+	}
 	// look into keyDir. for each key_names, find pubkeys
 	// use ageenc to encode secret
 	// save to storeDir/enc
 	// save key_names to storeDir/acl one per line
+	_, _, _, _ = keyDir, key_names, secret_name, secret
 }
 func read_secret(secret_dir string) {
-	keyDir := path.Join(xdg.DataHome, "passa-gui", ".keys")
+	keyDir, err := keyStore()
+	if err != nil {
+		log.Printf("Failed to access key store: %v", err)
+		return
+	}
 	// read key names line by line from secret_dir/acl
 	// stop at first that is in keyDir/key_name
+	_, _ = keyDir, secret_dir
 }
