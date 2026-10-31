@@ -1,15 +1,21 @@
 package main
 
 import (
-        "log"
-        "path"
+	"bytes"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path"
+
+	"filippo.io/age"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-        "filippo.io/age"
-        "github.com/go-git/go-git/v6"
-        "github.com/adrg/xdg"
+	"github.com/adrg/xdg"
+	"github.com/go-git/go-git/v6"
 )
+
 /*
  expect
   * git manged repository per password store (may have multiple?)
@@ -49,13 +55,13 @@ func main() {
 	w.ShowAndRun()
 }
 
-func dcrypt(pkey, data_file) {
+func dcrypt(pkey, dataFile string) {
 	identity, err := age.ParseX25519Identity(pkey)
 	if err != nil {
 		log.Fatalf("Failed to parse private key: %v", err)
 	}
 
-	f, err := os.Open(data_file)
+	f, err := os.Open(dataFile)
 	if err != nil {
 		log.Fatalf("Failed to open file: %v", err)
 	}
@@ -72,10 +78,13 @@ func dcrypt(pkey, data_file) {
 	fmt.Printf("File contents: %q\n", out.Bytes())
 }
 
-func gitpull(name, remote_loc) {
-  store_dir = path.Join(xdg.DataDirs, "passa-gui", name)
-  _, err := git.PlainClone(store_dir, &git.CloneOptions{
-      URL:      remote_loc,
-      Progress: os.Stdout,
-  })
+func gitpull(name, remoteLoc string) {
+	storeDir := path.Join(xdg.DataHome, "passa-gui", name)
+	_, err := git.PlainClone(storeDir, &git.CloneOptions{
+		URL:      remoteLoc,
+		Progress: os.Stdout,
+	})
+	if err != nil {
+		log.Printf("Failed to clone repository: %v", err)
+	}
 }

@@ -1,6 +1,6 @@
 .PHONY: tidy all
-all: main
-main: go.sum main.go
+all: passa-gui
+passa-gui: go.sum main.go
 	go build
 
 go.sum: go.mod
