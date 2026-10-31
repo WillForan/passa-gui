@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"strings"
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
@@ -171,17 +172,66 @@ func new_key(key_name string) (string, error) {
 
 	return privatePath, nil
 }
-func new_secret(key_names []string, secret_name string, secret string) {
+
+func namecheck(name string) (error) {
+	if name == "" || name == "." || name == ".." || path.Base(name) != name {
+		return fmt.Errorf("invalid name %q", name)
+	}
+	return nil
+}
+
+func new_secret(repo_dir string, key_names []string, secret_name string, secret string) (string, error) {
 	keyDir, err := keyStore()
 	if err != nil {
-		log.Printf("Failed to access key store: %v", err)
-		return
+		return "", fmt.Errorf("access key store: %w", err)
 	}
-	// look into keyDir. for each key_names, find pubkeys
-	// use ageenc to encode secret
-	// save to storeDir/enc
-	// save key_names to storeDir/acl one per line
-	_, _, _, _ = keyDir, key_names, secret_name, secret
+	if err := namecheck(secret_name); err != nil{
+		return "", fmt.Errorf("invalid secret name %q: %w", secret_name, err)
+	}
+	if len(key_names) == 0 {
+		return "", fmt.Errorf("at least one key is required")
+	}
+
+	publicKeys := make([]string, 0, len(key_names))
+	for _, keyName := range key_names {
+		if namecheck(keyName) != nil {
+			return "", fmt.Errorf("invalid key name %q", keyName)
+		}
+		publicKey, err := os.ReadFile(path.Join(keyDir, keyName+".pub"))
+		if err != nil {
+			return "", fmt.Errorf("read public key %q: %w", keyName, err)
+		}
+		publicKeys = append(publicKeys, string(publicKey))
+	}
+
+	encrypted, err := ageenc(secret, publicKeys)
+	if err != nil {
+		return "", fmt.Errorf("encrypt secret: %w", err)
+	}
+
+	secretDir := path.Join(repo_dir, secret_name)
+	if err := os.MkdirAll(secretDir, 0o700); err != nil {
+		return "", fmt.Errorf("create secret directory: %w", err)
+	}
+	encPath := path.Join(secretDir, "enc")
+	aclPath := path.Join(secretDir, "acl")
+	for _, filePath := range []string{encPath, aclPath} {
+		if _, err := os.Stat(filePath); err == nil {
+			return "", fmt.Errorf("secret file %q already exists", filePath)
+		} else if !os.IsNotExist(err) {
+			return "", fmt.Errorf("check secret file %q: %w", filePath, err)
+		}
+	}
+
+	if err := os.WriteFile(encPath, []byte(encrypted), 0o600); err != nil {
+		return "", fmt.Errorf("write encrypted secret: %w", err)
+	}
+	if err := os.WriteFile(aclPath, []byte(strings.Join(key_names, "\n")+"\n"), 0o600); err != nil {
+		_ = os.Remove(encPath)
+		return "", fmt.Errorf("write secret access list: %w", err)
+	}
+
+	return secretDir, nil
 }
 func read_secret(secret_dir string) {
 	keyDir, err := keyStore()

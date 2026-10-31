@@ -107,3 +107,46 @@ func TestNewKeyWritesPrivateAndPublicKeys(t *testing.T) {
 		t.Fatal("new_key() succeeded for an existing key")
 	}
 }
+
+func TestNewSecretWritesEncryptedSecretAndACL(t *testing.T) {
+	keyDir := filepath.Join(t.TempDir(), "keys")
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	t.Setenv("PASSA_STORE_KEYS", keyDir)
+
+	privatePath, err := new_key("test-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey, err := os.ReadFile(privatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	secretDir, err := new_secret(repoDir, []string{"test-key"}, "example", "secret value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secretDir != filepath.Join(repoDir, "example") {
+		t.Fatalf("new_secret() path = %q", secretDir)
+	}
+
+	encrypted, err := os.ReadFile(filepath.Join(secretDir, "enc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decrypted, err := agedecrypt(string(privateKey), string(encrypted))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decrypted != "secret value" {
+		t.Fatalf("decrypted secret = %q, want %q", decrypted, "secret value")
+	}
+
+	acl, err := os.ReadFile(filepath.Join(secretDir, "acl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(acl) != "test-key\n" {
+		t.Fatalf("ACL = %q, want %q", acl, "test-key\n")
+	}
+}
