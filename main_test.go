@@ -149,4 +149,12 @@ func TestNewSecretWritesEncryptedSecretAndACL(t *testing.T) {
 	if string(acl) != "test-key\n" {
 		t.Fatalf("ACL = %q, want %q", acl, "test-key\n")
 	}
+
+	got, err := read_secret(secretDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "secret value" {
+		t.Fatalf("read_secret() = %q, want %q", got, "secret value")
+	}
 }

@@ -173,7 +173,7 @@ func new_key(key_name string) (string, error) {
 	return privatePath, nil
 }
 
-func namecheck(name string) (error) {
+func namecheck(name string) error {
 	if name == "" || name == "." || name == ".." || path.Base(name) != name {
 		return fmt.Errorf("invalid name %q", name)
 	}
@@ -185,7 +185,7 @@ func new_secret(repo_dir string, key_names []string, secret_name string, secret 
 	if err != nil {
 		return "", fmt.Errorf("access key store: %w", err)
 	}
-	if err := namecheck(secret_name); err != nil{
+	if err := namecheck(secret_name); err != nil {
 		return "", fmt.Errorf("invalid secret name %q: %w", secret_name, err)
 	}
 	if len(key_names) == 0 {
@@ -233,13 +233,49 @@ func new_secret(repo_dir string, key_names []string, secret_name string, secret 
 
 	return secretDir, nil
 }
-func read_secret(secret_dir string) {
+func read_secret(secret_dir string) (string, error) {
+	// look at secret_dir/acl. find first also in keyStore
+	// use that to decrypt "enc"
 	keyDir, err := keyStore()
 	if err != nil {
-		log.Printf("Failed to access key store: %v", err)
-		return
+		return "", fmt.Errorf("cannot read secret from %q: %w", secret_dir, err)
 	}
-	// read key names line by line from secret_dir/acl
-	// stop at first that is in keyDir/key_name
-	_, _ = keyDir, secret_dir
+
+	aclFile, err := os.Open(path.Join(secret_dir, "acl"))
+	if err != nil {
+		return "", fmt.Errorf("read access list: %w", err)
+	}
+	defer aclFile.Close()
+
+	encrypted, err := os.ReadFile(path.Join(secret_dir, "enc"))
+	if err != nil {
+		return "", fmt.Errorf("read encrypted secret: %w", err)
+	}
+
+	scanner := bufio.NewScanner(aclFile)
+	for scanner.Scan() {
+		keyName := strings.TrimSpace(scanner.Text())
+		if keyName == "" {
+			continue
+		}
+		privateKey, err := os.ReadFile(path.Join(keyDir, keyName))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("read private key %q: %w", keyName, err)
+		}
+
+		decrypted, err := agedecrypt(string(privateKey), string(encrypted))
+		if err != nil {
+			return "", fmt.Errorf("decrypt with key %q: %w", keyName, err)
+		}
+		return decrypted, nil
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("read access list: %w", err)
+	}
+
+	return "", fmt.Errorf("no matching private key for secret %q", secret_dir)
+}
 }
