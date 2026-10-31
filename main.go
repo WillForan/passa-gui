@@ -118,3 +118,34 @@ func gitpull(name, remoteLoc string) {
 		log.Printf("Failed to clone repository: %v", err)
 	}
 }
+
+func keyStore() (string) {
+	// TODO: check environment for PASSA_STORE_KEYS
+	keyDir := path.Join(xdg.DataHome, "passa-gui", ".keys")
+	// mkdir if missing
+	return keyDir
+}
+
+func new_repo(repo_name string) {
+	storeDir := path.Join(xdg.DataHome, "passa-gui", name)
+	// error if existing
+	// mkdirectory
+}
+func new_key(key_name string) {
+	keyDir = keyStore()
+	// mkdirectory if missing
+	// error if key exists
+	// generate new key, save to keyDir/key_name keyDir/key_name.pub
+}
+func new_secret(storeDir string, key_names []string, secret_name string, secret string) {
+	keyDir := path.Join(xdg.DataHome, "passa-gui", ".keys")
+	// look into keyDir. for each key_names, find pubkeys
+	// use ageenc to encode secret
+	// save to storeDir/enc
+	// save key_names to storeDir/acl one per line
+}
+func read_secret(secret_dir string) {
+	keyDir := path.Join(xdg.DataHome, "passa-gui", ".keys")
+	// read key names line by line from secret_dir/acl
+	// stop at first that is in keyDir/key_name
+}
