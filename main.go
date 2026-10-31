@@ -138,17 +138,40 @@ func new_repo(repo_name string) (string, error) {
 	}
 	return storeDir, nil
 }
-func new_key(key_name string) {
+func new_key(key_name string) (string, error) {
 	keyDir, err := keyStore()
 	if err != nil {
-		log.Printf("Failed to create key store: %v", err)
-		return
+		return "", fmt.Errorf("create key store: %w", err)
 	}
-	// error if key exists
-	// generate new key, save to keyDir/key_name keyDir/key_name.pub
-	_, _ = keyDir, key_name
+	if key_name == "" || key_name == "." || key_name == ".." || path.Base(key_name) != key_name {
+		return "", fmt.Errorf("invalid key name %q", key_name)
+	}
+
+	privatePath := path.Join(keyDir, key_name)
+	publicPath := privatePath + ".pub"
+	for _, filePath := range []string{privatePath, publicPath} {
+		if _, err := os.Stat(filePath); err == nil {
+			return "", fmt.Errorf("key file %q already exists", filePath)
+		} else if !os.IsNotExist(err) {
+			return "", fmt.Errorf("check key file %q: %w", filePath, err)
+		}
+	}
+
+	identity, err := age.GenerateX25519Identity()
+	if err != nil {
+		return "", fmt.Errorf("generate key: %w", err)
+	}
+	if err := os.WriteFile(privatePath, []byte(identity.String()), 0o600); err != nil {
+		return "", fmt.Errorf("write private key: %w", err)
+	}
+	if err := os.WriteFile(publicPath, []byte(identity.Recipient().String()), 0o644); err != nil {
+		_ = os.Remove(privatePath)
+		return "", fmt.Errorf("write public key: %w", err)
+	}
+
+	return privatePath, nil
 }
-func new_secret(storeDir string, key_names []string, secret_name string, secret string) {
+func new_secret(key_names []string, secret_name string, secret string) {
 	keyDir, err := keyStore()
 	if err != nil {
 		log.Printf("Failed to access key store: %v", err)
