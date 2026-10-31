@@ -293,10 +293,24 @@ func list_keys() ([]string, error) {
 	return make([]string, 0, 1), nil
 }
 
-// list all secrets in a repo/password store
+// list all secret directories in a repo/password store.
+// returns all directories in repo_path with a 'enc' file
 func list_secrets(repo_path string) ([]string, error) {
-	//TODO: resurive find 'enc' files in repo_path
-	return make([]string, 0, 1), nil
+	secrets := make([]string, 0)
+	err := filepath.WalkDir(repo_path, func(filePath string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || entry.Name() != "enc" {
+			return nil
+		}
+		secrets = append(secrets, filepath.Dir(filePath))
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list secrets in %q: %w", repo_path, err)
+	}
+	return secrets, nil
 }
 
 // list all secrets in a repo/password store

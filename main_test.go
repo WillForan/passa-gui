@@ -9,6 +9,38 @@ import (
 	"github.com/adrg/xdg"
 )
 
+func TestListSecretsFindsEncryptedSecretDirectories(t *testing.T) {
+	repoDir := t.TempDir()
+	secretDirs := []string{
+		filepath.Join(repoDir, "personal", "email"),
+		filepath.Join(repoDir, "work", "cloud"),
+	}
+	for _, secretDir := range secretDirs {
+		if err := os.MkdirAll(secretDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(secretDir, "enc"), []byte("encrypted"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "not-a-secret"), []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := list_secrets(repoDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(secretDirs) {
+		t.Fatalf("list_secrets() = %v, want %v", got, secretDirs)
+	}
+	for i := range secretDirs {
+		if got[i] != secretDirs[i] {
+			t.Fatalf("list_secrets() = %v, want %v", got, secretDirs)
+		}
+	}
+}
+
 func TestAgeencEncryptsForAllRecipients(t *testing.T) {
 	firstIdentity, err := age.GenerateX25519Identity()
 	if err != nil {
@@ -235,4 +267,5 @@ func TestRepoACLsCountsKeysRecursively(t *testing.T) {
 			t.Fatalf("repo_acls() = %v, want %v", got, want)
 		}
 	}
+
 }
