@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bytes"
-	"io"
 	"testing"
 
 	"filippo.io/age"
-	"filippo.io/age/armor"
 )
 
 func TestAgeencEncryptsForAllRecipients(t *testing.T) {
@@ -29,24 +26,19 @@ func TestAgeencEncryptsForAllRecipients(t *testing.T) {
 	}
 
 	for _, testCase := range []struct {
-		name     string
-		identity age.Identity
+		name       string
+		identity   age.Identity
+		privateKey string
 	}{
-		{name: "first recipient", identity: firstIdentity},
-		{name: "second recipient", identity: secondIdentity},
+		{name: "first recipient", identity: firstIdentity, privateKey: firstIdentity.String()},
+		{name: "second recipient", identity: secondIdentity, privateKey: secondIdentity.String()},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			reader := armor.NewReader(bytes.NewBufferString(encrypted))
-			decrypted, err := age.Decrypt(reader, testCase.identity)
+			got, err := agedecrypt(testCase.privateKey, encrypted)
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			got, err := io.ReadAll(decrypted)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(got) != plaintext {
+			if got != plaintext {
 				t.Fatalf("decrypted plaintext = %q, want %q", got, plaintext)
 			}
 		})

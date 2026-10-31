@@ -56,29 +56,6 @@ func main() {
 	w.ShowAndRun()
 }
 
-func dcrypt(pkey, dataFile string) {
-	identity, err := age.ParseX25519Identity(pkey)
-	if err != nil {
-		log.Fatalf("Failed to parse private key: %v", err)
-	}
-
-	f, err := os.Open(dataFile)
-	if err != nil {
-		log.Fatalf("Failed to open file: %v", err)
-	}
-
-	r, err := age.Decrypt(f, identity)
-	if err != nil {
-		log.Fatalf("Failed to open encrypted file: %v", err)
-	}
-	out := &bytes.Buffer{}
-	if _, err := io.Copy(out, r); err != nil {
-		log.Fatalf("Failed to read encrypted file: %v", err)
-	}
-
-	fmt.Printf("File contents: %q\n", out.Bytes())
-}
-
 func ageenc(data string, publicKeys []string) (string, error) {
 	recipients := make([]age.Recipient, 0, len(publicKeys))
 	for _, publicKey := range publicKeys {
@@ -110,6 +87,25 @@ func ageenc(data string, publicKeys []string) (string, error) {
 	}
 
 	return out.String(), nil
+}
+
+func agedecrypt(privateKey, encryptedValue string) (string, error) {
+	identity, err := age.ParseX25519Identity(privateKey)
+	if err != nil {
+		return "", fmt.Errorf("parse private key: %w", err)
+	}
+
+	reader := armor.NewReader(bytes.NewBufferString(encryptedValue))
+	decrypted, err := age.Decrypt(reader, identity)
+	if err != nil {
+		return "", fmt.Errorf("decrypt value: %w", err)
+	}
+
+	plaintext, err := io.ReadAll(decrypted)
+	if err != nil {
+		return "", fmt.Errorf("read decrypted value: %w", err)
+	}
+	return string(plaintext), nil
 }
 
 func gitpull(name, remoteLoc string) {
