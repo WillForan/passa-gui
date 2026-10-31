@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"filippo.io/age"
@@ -278,4 +280,79 @@ func read_secret(secret_dir string) (string, error) {
 
 	return "", fmt.Errorf("no matching private key for secret %q", secret_dir)
 }
+
+// List all keys in xdg directory or PASSA_STORE_KEYS if set
+func list_keys() ([]string, error) {
+	_, err := keyStore()
+	if err != nil {
+		return nil, fmt.Errorf("cannot list keys: %w", err)
+	}
+	// TODO: list
+	// maybe enum public, private, both
+	// recursive find? or never allow keys with directory
+	return make([]string, 0, 1), nil
+}
+
+// list all secrets in a repo/password store
+func list_secrets(repo_path string) ([]string, error) {
+	//TODO: resurive find 'enc' files in repo_path
+	return make([]string, 0, 1), nil
+}
+
+// list all secrets in a repo/password store
+func list_repos() ([]string, error) {
+	storeDir := path.Join(xdg.DataHome, "passa-gui")
+	entries, err := os.ReadDir(storeDir)
+	if os.IsNotExist(err) {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list repositories in %q: %w", storeDir, err)
+	}
+
+	repos := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == ".keys" {
+			continue
+		}
+		repos = append(repos, path.Join(storeDir, entry.Name()))
+	}
+	return repos, nil
+}
+
+// find and read all acl files, counting each non-empty key name.
+func repo_acls(repo_paths []string) (map[string]int, error) {
+	counts := make(map[string]int)
+	for _, repoPath := range repo_paths {
+		err := filepath.WalkDir(repoPath, func(filePath string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || entry.Name() != "acl" {
+				return nil
+			}
+
+			aclFile, err := os.Open(filePath)
+			if err != nil {
+				return fmt.Errorf("open ACL file %q: %w", filePath, err)
+			}
+			defer aclFile.Close()
+
+			scanner := bufio.NewScanner(aclFile)
+			for scanner.Scan() {
+				keyName := strings.TrimSpace(scanner.Text())
+				if keyName != "" {
+					counts[keyName]++
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("read ACL file %q: %w", filePath, err)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("scan repository %q: %w", repoPath, err)
+		}
+	}
+	return counts, nil
 }

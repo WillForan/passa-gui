@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"filippo.io/age"
+	"github.com/adrg/xdg"
 )
 
 func TestAgeencEncryptsForAllRecipients(t *testing.T) {
@@ -156,5 +157,82 @@ func TestNewSecretWritesEncryptedSecretAndACL(t *testing.T) {
 	}
 	if got != "secret value" {
 		t.Fatalf("read_secret() = %q, want %q", got, "secret value")
+	}
+}
+
+func TestListReposReturnsRepositoryDirectories(t *testing.T) {
+	dataHome := t.TempDir()
+	originalDataHome := xdg.DataHome
+	xdg.DataHome = dataHome
+	t.Cleanup(func() {
+		xdg.DataHome = originalDataHome
+	})
+
+	storeDir := filepath.Join(dataHome, "passa-gui")
+	if err := os.MkdirAll(filepath.Join(storeDir, "repo-a"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(storeDir, "repo-b"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(storeDir, ".keys"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storeDir, "not-a-repo"), []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repos, err := list_repos()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		filepath.Join(storeDir, "repo-a"),
+		filepath.Join(storeDir, "repo-b"),
+	}
+	if len(repos) != len(want) {
+		t.Fatalf("list_repos() = %v, want %v", repos, want)
+	}
+	for i := range want {
+		if repos[i] != want[i] {
+			t.Fatalf("list_repos() = %v, want %v", repos, want)
+		}
+	}
+
+}
+
+func TestRepoACLsCountsKeysRecursively(t *testing.T) {
+	repoA := t.TempDir()
+	repoB := t.TempDir()
+	for _, file := range []struct {
+		root string
+		path string
+		data string
+	}{
+		{repoA, filepath.Join("one", "acl"), "alpha\nbeta\nalpha\n"},
+		{repoA, filepath.Join("two", "nested", "acl"), "beta\n\n"},
+		{repoB, filepath.Join("acl"), "gamma\nalpha\n"},
+	} {
+		filePath := filepath.Join(file.root, file.path)
+		if err := os.MkdirAll(filepath.Dir(filePath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filePath, []byte(file.data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := repo_acls([]string{repoA, repoB})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{"alpha": 3, "beta": 2, "gamma": 1}
+	if len(got) != len(want) {
+		t.Fatalf("repo_acls() = %v, want %v", got, want)
+	}
+	for key, count := range want {
+		if got[key] != count {
+			t.Fatalf("repo_acls() = %v, want %v", got, want)
+		}
 	}
 }
