@@ -10,6 +10,29 @@ import (
         "github.com/go-git/go-git/v6"
         "github.com/adrg/xdg"
 )
+/*
+ expect
+  * git manged repository per password store (may have multiple?)
+  * seperate private key store (what if key names are shared but different kyes across stores?)
+  * public keys for encoding
+ want easy/friendly graphical inteface to
+  * decode (age with private key)
+  * totp for matching strings or 'totp' name
+  * update (managed with git push)
+
+passa structure is folder per secret.
+  secret_name/
+  |-- readme.* # public notes about the secret
+  |-- acl      # key names (recipients that can decode). 1 per line
+  `-- enc      # age PEM encoded secret
+
+dec like:
+   cat $enc | age -d -i $PASSA_STORE_KEYS/${usable_keys[0]}
+
+enc like:
+  age -e -a "${pubkeys[@]}" > $encdir/enc
+  printf "%s\n" "${acls[@]}" > $encdir/acl
+*/
 
 func main() {
 	a := app.New()
@@ -27,7 +50,7 @@ func main() {
 }
 
 func dcrypt(pkey, data_file) {
-	identity, err := age.ParseX25519Identity(privateKey)
+	identity, err := age.ParseX25519Identity(pkey)
 	if err != nil {
 		log.Fatalf("Failed to parse private key: %v", err)
 	}

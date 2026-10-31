@@ -1,5 +1,7 @@
 .PHONY: tidy all
-all:
+all: main
+main: go.sum main.go
 	go build
-tidy:
+
+go.sum: go.mod
 	go mod tidy
