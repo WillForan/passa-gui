@@ -9,6 +9,7 @@ import (
 	"path"
 
 	"filippo.io/age"
+	"filippo.io/age/armor"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
@@ -76,6 +77,39 @@ func dcrypt(pkey, dataFile string) {
 	}
 
 	fmt.Printf("File contents: %q\n", out.Bytes())
+}
+
+func ageenc(data string, publicKeys []string) (string, error) {
+	recipients := make([]age.Recipient, 0, len(publicKeys))
+	for _, publicKey := range publicKeys {
+		recipient, err := age.ParseX25519Recipient(publicKey)
+		if err != nil {
+			return "", fmt.Errorf("parse public key %q: %w", publicKey, err)
+		}
+		recipients = append(recipients, recipient)
+	}
+
+	var out bytes.Buffer
+	armored := armor.NewWriter(&out)
+	encrypted, err := age.Encrypt(armored, recipients...)
+	if err != nil {
+		_ = armored.Close()
+		return "", fmt.Errorf("create encrypted file: %w", err)
+	}
+	if _, err := encrypted.Write([]byte(data)); err != nil {
+		_ = encrypted.Close()
+		_ = armored.Close()
+		return "", fmt.Errorf("encrypt data: %w", err)
+	}
+	if err := encrypted.Close(); err != nil {
+		_ = armored.Close()
+		return "", fmt.Errorf("finish encrypted file: %w", err)
+	}
+	if err := armored.Close(); err != nil {
+		return "", fmt.Errorf("finish armored encrypted file: %w", err)
+	}
+
+	return out.String(), nil
 }
 
 func gitpull(name, remoteLoc string) {
