@@ -1,9 +1,11 @@
-.PHONY: tidy all
+.PHONY: all test
 all: passa-gui .make/test.log
-passa-gui: go.sum main.go backend.go
+test: .make/test.log
+SRC := main.go backend.go
+passa-gui: go.sum $(SRC)
 	go build
 
-go.sum: go.mod
+go.sum: go.mod $(SRC)
 	go mod tidy
 
 .make/test.log: passa-gui | .make/

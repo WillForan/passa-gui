@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
@@ -20,7 +21,7 @@ import (
 func ageenc(data string, publicKeys []string) (string, error) {
 	recipients := make([]age.Recipient, 0, len(publicKeys))
 	for _, publicKey := range publicKeys {
-		recipient, err := age.ParseX25519Recipient(publicKey)
+		recipient, err := age.ParseX25519Recipient(stripAgeComments(publicKey))
 		if err != nil {
 			return "", fmt.Errorf("parse public key %q: %w", publicKey, err)
 		}
@@ -51,7 +52,7 @@ func ageenc(data string, publicKeys []string) (string, error) {
 }
 
 func agedecrypt(privateKey, encryptedValue string) (string, error) {
-	identity, err := age.ParseX25519Identity(privateKey)
+	identity, err := age.ParseX25519Identity(stripAgeComments(privateKey))
 	if err != nil {
 		return "", fmt.Errorf("parse private key: %w", err)
 	}
@@ -67,6 +68,19 @@ func agedecrypt(privateKey, encryptedValue string) (string, error) {
 		return "", fmt.Errorf("read decrypted value: %w", err)
 	}
 	return string(plaintext), nil
+}
+
+// key file likley to have extra lines like '# public key: age...' and '# created: yyyy-...'
+func stripAgeComments(value string) string {
+	lines := strings.Split(value, "\n")
+	for len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[0]), "#") {
+		lines = lines[1:]
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func ageKeyComments(publicKey string) string {
+	return fmt.Sprintf("# created: %s\n# public key: %s\n", time.Now().Format(time.RFC3339), publicKey)
 }
 
 func gitpull(name, remoteLoc string) {
@@ -122,10 +136,12 @@ func new_key(key_name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("generate key: %w", err)
 	}
-	if err := os.WriteFile(privatePath, []byte(identity.String()), 0o600); err != nil {
+	publicKey := identity.Recipient().String()
+	comments := ageKeyComments(publicKey)
+	if err := os.WriteFile(privatePath, []byte(comments+identity.String()), 0o600); err != nil {
 		return "", fmt.Errorf("write private key: %w", err)
 	}
-	if err := os.WriteFile(publicPath, []byte(identity.Recipient().String()), 0o644); err != nil {
+	if err := os.WriteFile(publicPath, []byte(comments+publicKey), 0o644); err != nil {
 		_ = os.Remove(privatePath)
 		return "", fmt.Errorf("write public key: %w", err)
 	}
@@ -140,11 +156,49 @@ func namecheck(name string) error {
 	return nil
 }
 
-func new_secret(repo_dir string, key_names []string, secret_name string, secret string) (string, error) {
+// 3 places to find a public key:
+// as a stand alone-file in (1) repo/.keys/name.pub or (2) keystore/name.pub
+// or within the private key file (3) keystore/name in '# public key: age...'
+func find_pubkey(keyName string, repo_dir string) (string, error) {
+	// (1) check repo .keys file
+	pubkey_file := path.Join(repo_dir, ".keys", keyName+".pub")
+	if _, err := os.Stat(pubkey_file); repo_dir != "" && err == nil {
+		pubKey, err := os.ReadFile(pubkey_file)
+		if err != nil {
+			return "", err
+		}
+		return string(pubKey), nil
+	}
+
+	// (2) check key store for pub
 	keyDir, err := keyStore()
 	if err != nil {
 		return "", fmt.Errorf("access key store: %w", err)
 	}
+	pubkey_file = path.Join(keyDir, keyName+".pub")
+	if _, err := os.Stat(pubkey_file); err == nil {
+		pubKey, err := os.ReadFile(pubkey_file)
+		if err != nil {
+			return "", err
+		}
+		return string(pubKey), nil
+	}
+
+	// (3) read from private key
+	privateKey, err := os.ReadFile(path.Join(keyDir, keyName))
+	if err != nil {
+		return "", fmt.Errorf("failed to find a public key for %s: %w", keyName, err)
+	}
+	for _, line := range strings.Split(string(privateKey), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "# public key:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "# public key:")), nil
+		}
+	}
+	return "", fmt.Errorf("failed to find %q public key: private key has no public-key comment", keyName)
+}
+
+func new_secret(repo_dir string, key_names []string, secret_name string, secret string) (string, error) {
 	if err := namecheck(secret_name); err != nil {
 		return "", fmt.Errorf("invalid secret name %q: %w", secret_name, err)
 	}
@@ -157,7 +211,7 @@ func new_secret(repo_dir string, key_names []string, secret_name string, secret 
 		if namecheck(keyName) != nil {
 			return "", fmt.Errorf("invalid key name %q", keyName)
 		}
-		publicKey, err := os.ReadFile(path.Join(keyDir, keyName+".pub"))
+		publicKey, err := find_pubkey(keyName, repo_dir)
 		if err != nil {
 			return "", fmt.Errorf("read public key %q: %w", keyName, err)
 		}
@@ -199,16 +253,12 @@ func updateSecret(secretDir string, keyNames []string, secret string) error {
 		return fmt.Errorf("at least one key is required")
 	}
 
-	keyDir, err := keyStore()
-	if err != nil {
-		return fmt.Errorf("access key store: %w", err)
-	}
 	publicKeys := make([]string, 0, len(keyNames))
 	for _, keyName := range keyNames {
 		if err := namecheck(keyName); err != nil {
 			return err
 		}
-		publicKey, err := os.ReadFile(filepath.Join(keyDir, keyName+".pub"))
+		publicKey, err := find_pubkey(keyName, "") // NOTE: no repo name avalable given
 		if err != nil {
 			return fmt.Errorf("read public key %q: %w", keyName, err)
 		}
@@ -231,11 +281,6 @@ func updateSecret(secretDir string, keyNames []string, secret string) error {
 // look at secret_dir/acl. find first also in keyStore
 // use that to decrypt "enc"
 func read_secret(secret_dir string) (string, error) {
-	keyDir, err := keyStore()
-	if err != nil {
-		return "", fmt.Errorf("cannot read secret from %q: %w", secret_dir, err)
-	}
-
 	aclFile, err := os.Open(path.Join(secret_dir, "acl"))
 	if err != nil {
 		return "", fmt.Errorf("read access list: %w", err)
@@ -252,6 +297,10 @@ func read_secret(secret_dir string) (string, error) {
 		keyName := strings.TrimSpace(scanner.Text())
 		if keyName == "" {
 			continue
+		}
+		keyDir, keyErr := keyStore()
+		if keyErr != nil {
+			return "", fmt.Errorf("access key store: %w", keyErr)
 		}
 		privateKey, err := os.ReadFile(path.Join(keyDir, keyName))
 		if os.IsNotExist(err) {

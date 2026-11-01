@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"filippo.io/age"
@@ -129,10 +130,13 @@ func TestNewKeyWritesPrivateAndPublicKeys(t *testing.T) {
 	}
 	privateKey := string(privateData)
 	publicKey := string(publicData)
-	if _, err := age.ParseX25519Identity(privateKey); err != nil {
+	if !strings.HasPrefix(privateKey, "# created: ") || !strings.Contains(privateKey, "# public key: ") {
+		t.Fatalf("private key is missing age metadata comments: %q", privateKey)
+	}
+	if _, err := age.ParseX25519Identity(stripAgeComments(privateKey)); err != nil {
 		t.Fatalf("private key is invalid: %v", err)
 	}
-	if _, err := age.ParseX25519Recipient(publicKey); err != nil {
+	if _, err := age.ParseX25519Recipient(stripAgeComments(publicKey)); err != nil {
 		t.Fatalf("public key is invalid: %v", err)
 	}
 
