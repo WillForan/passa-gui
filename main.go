@@ -235,7 +235,15 @@ func main() {
 			dialog.ShowError(err, w)
 			return
 		}
+		changedSecret := currentSecret
 		refreshSecrets(currentRepo)
+		secretList.UnselectAll()
+		for id, secretPath := range secrets {
+			if secretPath == changedSecret {
+				secretList.Select(widget.ListItemID(id + 1))
+				break
+			}
+		}
 	}
 	totpButton.OnTapped = func() {
 		code, err := generateTOTP(secretDisplay.Text)
