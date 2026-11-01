@@ -120,6 +120,8 @@ func main() {
 	)
 	secretDisplay := widget.NewMultiLineEntry()
 	secretDisplay.SetMinRowsVisible(8)
+	secretPathLabel := widget.NewLabel("")
+	secretPathLabel.Selectable = true
 	changeButton := widget.NewButton("Change", nil)
 	copyButton := widget.NewButton("Copy", nil)
 	totpButton := widget.NewButton("TOTP", nil)
@@ -156,6 +158,7 @@ func main() {
 		secrets = updated
 		secretList.Refresh()
 		currentSecret = ""
+		secretPathLabel.SetText("")
 		secretDisplay.SetText("")
 	}
 
@@ -168,6 +171,7 @@ func main() {
 	secretList.OnSelected = func(id widget.ListItemID) {
 		if id == 0 {
 			currentSecret = ""
+			secretPathLabel.SetText("")
 			secretDisplay.SetText("")
 			secretDisplay.Refresh()
 			return
@@ -193,6 +197,7 @@ func main() {
 		}
 		keyList.Refresh()
 		currentSecret = secrets[id-1]
+		secretPathLabel.SetText(currentSecret)
 		secretDisplay.SetText(secret)
 		secretDisplay.Refresh()
 	}
@@ -313,7 +318,8 @@ func main() {
 	leftPane := container.NewVSplit(repoPane, keyPane)
 	leftPane.Offset = 0.4
 	middlePane := container.NewBorder(paneHeader("Secrets"), secretAddButton, nil, nil, secretList)
-	rightPane := container.NewBorder(paneHeader("Secret"), container.NewHBox(changeButton, copyButton, totpButton), nil, nil, secretDisplay)
+	secretContent := container.NewBorder(secretPathLabel, nil, nil, nil, secretDisplay)
+	rightPane := container.NewBorder(paneHeader("Secret"), container.NewHBox(changeButton, copyButton, totpButton), nil, nil, secretContent)
 	leftMiddle := container.NewHSplit(leftPane, middlePane)
 	leftMiddle.Offset = 0.3
 	mainSplit := container.NewHSplit(leftMiddle, rightPane)
