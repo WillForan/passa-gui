@@ -1,4 +1,6 @@
-go.sum
 passa-gui
+passa-gui.exe
+
+go.sum
 .make/
 passa.toml
