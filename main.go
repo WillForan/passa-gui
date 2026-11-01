@@ -307,6 +307,10 @@ func main() {
 			dialog.ShowError(err, w)
 			return
 		}
+		if err := commitSecretChange(currentRepo, currentSecret); err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
 		changedSecret := currentSecret
 		refreshSecrets(currentRepo)
 		secretList.UnselectAll()

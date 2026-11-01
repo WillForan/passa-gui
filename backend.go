@@ -7,11 +7,13 @@ import (
 	"crypto/sha1"
 	"encoding/base32"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/url"
 	"os"
+	"os/user"
 	"path"
 	"path/filepath"
 	"strings"
@@ -21,6 +23,7 @@ import (
 	"filippo.io/age/armor"
 	"github.com/adrg/xdg"
 	"github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/plumbing/object"
 )
 
 func ageenc(data string, publicKeys []string) (string, error) {
@@ -341,6 +344,44 @@ func updateSecret(secretDir string, keyNames []string, secret string) error {
 	}
 	if err := os.WriteFile(filepath.Join(secretDir, "acl"), []byte(formatACL(keyNames, publicKeys)), 0o600); err != nil {
 		return fmt.Errorf("write secret access list: %w", err)
+	}
+	return nil
+}
+
+func commitSecretChange(repoDir, secretDir string) error {
+	repository, err := git.PlainOpen(repoDir)
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("open git repository: %w", err)
+	}
+
+	worktree, err := repository.Worktree()
+	if err != nil {
+		return fmt.Errorf("open git worktree: %w", err)
+	}
+	relativeSecretDir, err := filepath.Rel(repoDir, secretDir)
+	if err != nil {
+		return fmt.Errorf("find secret path relative to repository: %w", err)
+	}
+	currentUser, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("get current user: %w", err)
+	}
+	for _, fileName := range []string{"acl", "enc"} {
+		if _, err := worktree.Add(filepath.Join(relativeSecretDir, fileName)); err != nil {
+			return fmt.Errorf("stage secret %q: %w", fileName, err)
+		}
+	}
+	if _, err := worktree.Commit(fmt.Sprintf("%s changed", filepath.Base(secretDir)), &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  currentUser.Username,
+			Email: "passa@localhost",
+			When:  time.Now(),
+		},
+	}); err != nil {
+		return fmt.Errorf("commit secret change: %w", err)
 	}
 	return nil
 }
