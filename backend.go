@@ -295,7 +295,7 @@ func new_secret(repo_dir string, key_names []string, secret_name string, secret 
 	if err := os.WriteFile(encPath, []byte(encrypted), 0o600); err != nil {
 		return "", fmt.Errorf("write encrypted secret: %w", err)
 	}
-	if err := os.WriteFile(aclPath, []byte(strings.Join(key_names, "\n")+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(aclPath, []byte(formatACL(key_names, publicKeys)), 0o600); err != nil {
 		_ = os.Remove(encPath)
 		return "", fmt.Errorf("write secret access list: %w", err)
 	}
@@ -327,10 +327,30 @@ func updateSecret(secretDir string, keyNames []string, secret string) error {
 	if err := os.WriteFile(filepath.Join(secretDir, "enc"), []byte(encrypted), 0o600); err != nil {
 		return fmt.Errorf("write encrypted secret: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(secretDir, "acl"), []byte(strings.Join(keyNames, "\n")+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(secretDir, "acl"), []byte(formatACL(keyNames, publicKeys)), 0o600); err != nil {
 		return fmt.Errorf("write secret access list: %w", err)
 	}
 	return nil
+}
+
+func formatACL(keyNames, publicKeys []string) string {
+	var acl strings.Builder
+	for i, keyName := range keyNames {
+		publicKey := ""
+		if i < len(publicKeys) {
+			publicKey = stripAgeComments(publicKeys[i])
+		}
+		acl.WriteString(keyName)
+		acl.WriteByte('\t')
+		acl.WriteString(publicKey)
+		acl.WriteByte('\n')
+	}
+	return acl.String()
+}
+
+func aclKeyName(line string) string {
+	fields := strings.SplitN(line, "\t", 2)
+	return strings.TrimSpace(fields[0])
 }
 
 // look at secret_dir/acl. find first also in keyStore
@@ -349,7 +369,7 @@ func read_secret(secret_dir string) (string, error) {
 
 	scanner := bufio.NewScanner(aclFile)
 	for scanner.Scan() {
-		keyName := strings.TrimSpace(scanner.Text())
+		keyName := aclKeyName(scanner.Text())
 		if keyName == "" {
 			continue
 		}
@@ -487,7 +507,7 @@ func repo_acls(repo_paths []string) (map[string]int, error) {
 
 			scanner := bufio.NewScanner(aclFile)
 			for scanner.Scan() {
-				keyName := strings.TrimSpace(scanner.Text())
+				keyName := aclKeyName(scanner.Text())
 				if keyName != "" {
 					counts[keyName]++
 				}

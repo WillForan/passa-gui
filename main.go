@@ -306,7 +306,12 @@ func secretListText(secretPath string) string {
 	if err != nil {
 		return filepath.Base(secretPath)
 	}
-	keys := strings.Fields(string(acl))
+	keys := make([]string, 0)
+	for _, line := range strings.Split(string(acl), "\n") {
+		if keyName := aclKeyName(line); keyName != "" {
+			keys = append(keys, keyName)
+		}
+	}
 	if len(keys) == 0 {
 		return filepath.Base(secretPath)
 	}

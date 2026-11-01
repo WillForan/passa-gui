@@ -234,8 +234,8 @@ func TestNewSecretWritesEncryptedSecretAndACL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(acl) != "test-key\n" {
-		t.Fatalf("ACL = %q, want %q", acl, "test-key\n")
+	if !strings.HasPrefix(string(acl), "test-key\tage1") {
+		t.Fatalf("ACL = %q, want key name and public key", acl)
 	}
 
 	got, err := read_secret(secretDir)
