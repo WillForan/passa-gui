@@ -78,15 +78,44 @@ func main() {
 	secrets := []string{}
 	currentRepo := ""
 	currentSecret := ""
-	secretList := widget.NewList(
+	var secretList *widget.List
+	secretList = widget.NewList(
 		func() int { return len(secrets) + 1 },
-		func() fyne.CanvasObject { return widget.NewLabel("") },
+		func() fyne.CanvasObject {
+			item := &secretListItem{
+				onCopyPassword: func(string) {},
+				onCopyLocation: func(string) {},
+				onSelect:       func() {},
+			}
+			item.Label = *widget.NewLabel("")
+			return item
+		},
 		func(id widget.ListItemID, object fyne.CanvasObject) {
+			item := object.(*secretListItem)
 			if id == 0 {
-				object.(*widget.Label).SetText("[none selected]")
+				item.secretPath = ""
+				item.SetText("[none selected]")
+				item.onSelect = func() {
+					secretList.Select(0)
+				}
 				return
 			}
-			object.(*widget.Label).SetText(secretListText(secrets[id-1]))
+			item.secretPath = secrets[id-1]
+			item.SetText(secretListText(item.secretPath))
+			item.onSelect = func() {
+				secretList.Select(id)
+			}
+			item.onCopyPassword = func(secretPath string) {
+				secret, err := read_secret(secretPath)
+				if err != nil {
+					dialog.ShowError(err, w)
+					return
+				}
+				a.Clipboard().SetContent(secret)
+			}
+			item.onCopyLocation = func(secretPath string) {
+				a.Clipboard().SetContent(secretPath)
+			}
 		},
 	)
 	secretDisplay := widget.NewMultiLineEntry()
@@ -290,6 +319,34 @@ func paneHeader(title string) fyne.CanvasObject {
 	label := canvas.NewText(title, color.Black)
 	label.TextStyle = fyne.TextStyle{Bold: true}
 	return container.NewMax(background, label)
+}
+
+type secretListItem struct {
+	widget.Label
+	secretPath     string
+	onCopyPassword func(string)
+	onCopyLocation func(string)
+	onSelect       func()
+}
+
+func (item *secretListItem) Tapped(*fyne.PointEvent) {
+	item.onSelect()
+}
+
+func (item *secretListItem) TappedSecondary(event *fyne.PointEvent) {
+	if item.secretPath == "" {
+		return
+	}
+	menu := fyne.NewMenu("",
+		fyne.NewMenuItem("Password to clipboard", func() {
+			item.onCopyPassword(item.secretPath)
+		}),
+		fyne.NewMenuItem("Location to clipboard", func() {
+			item.onCopyLocation(item.secretPath)
+		}),
+	)
+	canvas := fyne.CurrentApp().Driver().CanvasForObject(item)
+	widget.ShowPopUpMenuAtPosition(menu, canvas, event.AbsolutePosition)
 }
 
 func contains(values []string, value string) bool {
