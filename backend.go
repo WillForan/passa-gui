@@ -165,15 +165,33 @@ func new_repo(repo_name string) (string, error) {
 	return storeDir, nil
 }
 func new_key(key_name string) (string, error) {
+	identity, err := age.GenerateX25519Identity()
+	if err != nil {
+		return "", fmt.Errorf("generate key: %w", err)
+	}
+	return storeKey(key_name, identity.String(), identity.Recipient().String())
+}
+
+func import_key(keyName string, privateKey string) (string, error) {
+	identity, err := age.ParseX25519Identity(stripAgeComments(privateKey))
+	if err != nil {
+		return "", fmt.Errorf("parse private key: %w", err)
+	}
+	// TODO: we lose any comments in the orginal file reusing this
+	// better to have done a copy?
+	return storeKey(keyName, stripAgeComments(privateKey), identity.Recipient().String())
+}
+
+func storeKey(keyName, privateKey, publicKey string) (string, error) {
+	if err := namecheck(keyName); err != nil {
+		return "", err
+	}
 	keyDir, err := keyStore()
 	if err != nil {
 		return "", fmt.Errorf("create key store: %w", err)
 	}
-	if key_name == "" || key_name == "." || key_name == ".." || path.Base(key_name) != key_name {
-		return "", fmt.Errorf("invalid key name %q", key_name)
-	}
 
-	privatePath := path.Join(keyDir, key_name)
+	privatePath := path.Join(keyDir, keyName)
 	publicPath := privatePath + ".pub"
 	for _, filePath := range []string{privatePath, publicPath} {
 		if _, err := os.Stat(filePath); err == nil {
@@ -183,20 +201,14 @@ func new_key(key_name string) (string, error) {
 		}
 	}
 
-	identity, err := age.GenerateX25519Identity()
-	if err != nil {
-		return "", fmt.Errorf("generate key: %w", err)
-	}
-	publicKey := identity.Recipient().String()
 	comments := ageKeyComments(publicKey)
-	if err := os.WriteFile(privatePath, []byte(comments+identity.String()), 0o600); err != nil {
+	if err := os.WriteFile(privatePath, []byte(comments+privateKey), 0o600); err != nil {
 		return "", fmt.Errorf("write private key: %w", err)
 	}
 	if err := os.WriteFile(publicPath, []byte(comments+publicKey), 0o644); err != nil {
 		_ = os.Remove(privatePath)
 		return "", fmt.Errorf("write public key: %w", err)
 	}
-
 	return privatePath, nil
 }
 

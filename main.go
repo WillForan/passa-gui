@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -226,14 +227,39 @@ func main() {
 
 	keyAddButton := widget.NewButton("New Key", nil)
 	keyAddButton.OnTapped = func() {
-		dialog.ShowEntryDialog("New key", "Key name", func(name string) {
-			name = strings.TrimSpace(name)
-			if _, err := new_key(name); err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
-			refreshKeys()
-		}, w)
+		menu := fyne.NewMenu("",
+			fyne.NewMenuItem("Generate new", func() {
+				dialog.ShowEntryDialog("New key", "Key name", func(name string) {
+					name = strings.TrimSpace(name)
+					if _, err := new_key(name); err != nil {
+						dialog.ShowError(err, w)
+						return
+					}
+					refreshKeys()
+				}, w)
+			}),
+			fyne.NewMenuItem("Import from file", func() {
+				dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
+					if err != nil {
+						dialog.ShowError(err, w)
+						return
+					}
+					defer reader.Close()
+					data, err := io.ReadAll(reader)
+					if err != nil {
+						dialog.ShowError(err, w)
+						return
+					}
+					keyName := reader.URI().Name()
+					if _, err := import_key(keyName, string(data)); err != nil {
+						dialog.ShowError(err, w)
+						return
+					}
+					refreshKeys()
+				}, w)
+			}),
+		)
+		widget.ShowPopUpMenuAtRelativePosition(menu, w.Canvas(), fyne.NewPos(0, keyAddButton.Size().Height), keyAddButton)
 	}
 
 	secretAddButton := widget.NewButton("New Secret", nil)

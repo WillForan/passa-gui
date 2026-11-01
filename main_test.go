@@ -196,6 +196,44 @@ func TestNewKeyWritesPrivateAndPublicKeys(t *testing.T) {
 	}
 }
 
+func TestImportKeyWritesAnnotatedPrivateAndPublicKeys(t *testing.T) {
+	keyDir := filepath.Join(t.TempDir(), "keys")
+	t.Setenv("PASSA_STORE_KEYS", keyDir)
+
+	sourceIdentity, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	privatePath, err := import_key("imported", sourceIdentity.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if privatePath != filepath.Join(keyDir, "imported") {
+		t.Fatalf("import_key() path = %q", privatePath)
+	}
+	privateData, err := os.ReadFile(privatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicData, err := os.ReadFile(privatePath + ".pub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := age.ParseX25519Identity(stripAgeComments(string(privateData)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := stripAgeComments(string(publicData)), identity.Recipient().String(); got != want {
+		t.Fatalf("imported public key = %q, want %q", got, want)
+	}
+	if _, err := import_key("imported", sourceIdentity.String()); err == nil {
+		t.Fatal("import_key() succeeded for an existing key")
+	}
+	if _, err := import_key("invalid", "not an age private key"); err == nil {
+		t.Fatal("import_key() accepted an invalid private key")
+	}
+}
+
 func TestNewSecretWritesEncryptedSecretAndACL(t *testing.T) {
 	keyDir := filepath.Join(t.TempDir(), "keys")
 	repoDir := filepath.Join(t.TempDir(), "repo")
