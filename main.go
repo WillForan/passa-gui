@@ -79,10 +79,14 @@ func main() {
 	currentRepo := ""
 	currentSecret := ""
 	secretList := widget.NewList(
-		func() int { return len(secrets) },
+		func() int { return len(secrets) + 1 },
 		func() fyne.CanvasObject { return widget.NewLabel("") },
 		func(id widget.ListItemID, object fyne.CanvasObject) {
-			object.(*widget.Label).SetText(secretListText(secrets[id]))
+			if id == 0 {
+				object.(*widget.Label).SetText("[none selected]")
+				return
+			}
+			object.(*widget.Label).SetText(secretListText(secrets[id-1]))
 		},
 	)
 	secretDisplay := widget.NewMultiLineEntry()
@@ -133,15 +137,21 @@ func main() {
 		}
 	}
 	secretList.OnSelected = func(id widget.ListItemID) {
-		if id >= len(secrets) {
+		if id == 0 {
+			currentSecret = ""
+			secretDisplay.SetText("")
+			secretDisplay.Refresh()
 			return
 		}
-		secret, err := read_secret(secrets[id])
+		if id > len(secrets) {
+			return
+		}
+		secret, err := read_secret(secrets[id-1])
 		if err != nil {
 			dialog.ShowError(err, w)
 			return
 		}
-		currentSecret = secrets[id]
+		currentSecret = secrets[id-1]
 		secretDisplay.SetText(secret)
 		secretDisplay.Refresh()
 	}
@@ -259,6 +269,9 @@ func main() {
 	mainSplit := container.NewHSplit(leftMiddle, rightPane)
 	mainSplit.Offset = 0.5
 	w.SetContent(mainSplit)
+	if len(repos) > 0 {
+		repoList.Select(0)
+	}
 
 	w.ShowAndRun()
 }
