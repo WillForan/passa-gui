@@ -3,9 +3,14 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base32"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -49,6 +54,38 @@ func ageenc(data string, publicKeys []string) (string, error) {
 	}
 
 	return out.String(), nil
+}
+
+func generateTOTP(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(strings.ToLower(value), "otpauth://") {
+		parsed, err := url.Parse(value)
+		if err != nil {
+			return "", fmt.Errorf("parse otpauth URI: %w", err)
+		}
+		value = parsed.Query().Get("secret")
+	}
+	value = strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(value, " ", ""), "-", ""))
+	if value == "" {
+		return "", fmt.Errorf("TOTP secret is empty")
+	}
+	secret, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(value)
+	if err != nil {
+		return "", fmt.Errorf("decode TOTP secret: %w", err)
+	}
+
+	counter := uint64(time.Now().Unix() / 30)
+	var message [8]byte
+	binary.BigEndian.PutUint64(message[:], counter)
+	mac := hmac.New(sha1.New, secret)
+	_, _ = mac.Write(message[:])
+	sum := mac.Sum(nil)
+	offset := sum[len(sum)-1] & 0x0f
+	number := (uint32(sum[offset])&0x7f)<<24 |
+		uint32(sum[offset+1])<<16 |
+		uint32(sum[offset+2])<<8 |
+		uint32(sum[offset+3])
+	return fmt.Sprintf("%06d", number%1000000), nil
 }
 
 func agedecrypt(privateKey, encryptedValue string) (string, error) {

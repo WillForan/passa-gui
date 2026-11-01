@@ -47,6 +47,7 @@ func TestAgeencEncryptsForAllRecipients(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	secondIdentity, err := age.GenerateX25519Identity()
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +79,26 @@ func TestAgeencEncryptsForAllRecipients(t *testing.T) {
 				t.Fatalf("decrypted plaintext = %q, want %q", got, plaintext)
 			}
 		})
+	}
+}
+
+func TestGenerateTOTP(t *testing.T) {
+	for _, secret := range []string{
+		"JBSWY3DPEHPK3PXP",
+		"otpauth://totp/example?secret=JBSWY3DPEHPK3PXP",
+	} {
+		code, err := generateTOTP(secret)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(code) != 6 {
+			t.Fatalf("generateTOTP(%q) = %q, want six digits", secret, code)
+		}
+		for _, character := range code {
+			if character < '0' || character > '9' {
+				t.Fatalf("generateTOTP(%q) = %q, want digits", secret, code)
+			}
+		}
 	}
 }
 

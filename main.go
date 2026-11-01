@@ -88,6 +88,7 @@ func main() {
 	secretDisplay := widget.NewMultiLineEntry()
 	secretDisplay.SetMinRowsVisible(8)
 	changeButton := widget.NewButton("Change", nil)
+	totpButton := widget.NewButton("TOTP", nil)
 
 	refreshKeys := func() {
 		updated, err := list_keys()
@@ -224,13 +225,22 @@ func main() {
 		}
 		refreshSecrets(currentRepo)
 	}
+	totpButton.OnTapped = func() {
+		code, err := generateTOTP(secretDisplay.Text)
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		a.Clipboard().SetContent(code)
+		dialog.ShowInformation("TOTP", fmt.Sprintf("Generated code: %s\nCopied to clipboard.", code), w)
+	}
 
 	repoPane := container.NewBorder(paneHeader("Repositories"), repoAddButton, nil, nil, repoList)
 	keyPane := container.NewBorder(paneHeader("Keys"), keyAddButton, nil, nil, keyList)
 	leftPane := container.NewVSplit(repoPane, keyPane)
 	leftPane.Offset = 0.4
 	middlePane := container.NewBorder(paneHeader("Secrets"), secretAddButton, nil, nil, secretList)
-	rightPane := container.NewBorder(paneHeader("Secret"), changeButton, nil, nil, secretDisplay)
+	rightPane := container.NewBorder(paneHeader("Secret"), container.NewHBox(changeButton, totpButton), nil, nil, secretDisplay)
 	leftMiddle := container.NewHSplit(leftPane, middlePane)
 	leftMiddle.Offset = 0.3
 	mainSplit := container.NewHSplit(leftMiddle, rightPane)
