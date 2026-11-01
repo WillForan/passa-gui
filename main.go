@@ -15,11 +15,14 @@ import (
 	"filippo.io/age/armor"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/adrg/xdg"
 	"github.com/go-git/go-git/v6"
+	"image/color"
 )
 
 /*
@@ -55,6 +58,24 @@ func main() {
 	if err != nil {
 		repos = []string{}
 	}
+	keys, err := list_keys()
+	if err != nil {
+		keys = []string{}
+	}
+	selectedKeys := make(map[string]bool)
+	keyList := widget.NewList(
+		func() int { return len(keys) },
+		func() fyne.CanvasObject { return widget.NewCheck("", nil) },
+		func(id widget.ListItemID, object fyne.CanvasObject) {
+			check := object.(*widget.Check)
+			keyName := keys[id]
+			check.SetText(keyName)
+			check.SetChecked(selectedKeys[keyName])
+			check.OnChanged = func(checked bool) {
+				selectedKeys[keyName] = checked
+			}
+		},
+	)
 	repoList := widget.NewList(
 		func() int { return len(repos) },
 		func() fyne.CanvasObject { return widget.NewLabel("") },
@@ -64,6 +85,8 @@ func main() {
 	)
 
 	secrets := []string{}
+	currentRepo := ""
+	currentSecret := ""
 	secretList := widget.NewList(
 		func() int { return len(secrets) },
 		func() fyne.CanvasObject { return widget.NewLabel("") },
@@ -71,9 +94,24 @@ func main() {
 			object.(*widget.Label).SetText(secretListText(secrets[id]))
 		},
 	)
-	secretDisplay := widget.NewLabel("")
-	secretDisplay.Wrapping = fyne.TextWrapWord
+	secretDisplay := widget.NewMultiLineEntry()
+	secretDisplay.SetMinRowsVisible(8)
+	changeButton := widget.NewButton("Change", nil)
 
+	refreshKeys := func() {
+		updated, err := list_keys()
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		keys = updated
+		for keyName := range selectedKeys {
+			if !contains(keys, keyName) {
+				delete(selectedKeys, keyName)
+			}
+		}
+		keyList.Refresh()
+	}
 	refreshRepos := func() {
 		updated, err := list_repos()
 		if err != nil {
@@ -91,11 +129,13 @@ func main() {
 		}
 		secrets = updated
 		secretList.Refresh()
+		currentSecret = ""
 		secretDisplay.SetText("")
 	}
 
 	repoList.OnSelected = func(id widget.ListItemID) {
 		if id < len(repos) {
+			currentRepo = repos[id]
 			refreshSecrets(repos[id])
 		}
 	}
@@ -108,11 +148,13 @@ func main() {
 			dialog.ShowError(err, w)
 			return
 		}
+		currentSecret = secrets[id]
 		secretDisplay.SetText(secret)
+		secretDisplay.Refresh()
 	}
 
-	addButton := widget.NewButton("Add", nil)
-	addButton.OnTapped = func() {
+	repoAddButton := widget.NewButton("Add", nil)
+	repoAddButton.OnTapped = func() {
 		menu := fyne.NewMenu("",
 			fyne.NewMenuItem("Store from directory", func() {
 				dialog.ShowInformation("Not implemented", "Storing an existing directory is not implemented yet.", w)
@@ -130,12 +172,74 @@ func main() {
 				}, w)
 			}),
 		)
-		widget.ShowPopUpMenuAtRelativePosition(menu, w.Canvas(), fyne.NewPos(0, addButton.Size().Height), addButton)
+		widget.ShowPopUpMenuAtRelativePosition(menu, w.Canvas(), fyne.NewPos(0, repoAddButton.Size().Height), repoAddButton)
 	}
 
-	leftPane := container.NewBorder(nil, addButton, nil, nil, repoList)
-	middlePane := container.NewBorder(nil, nil, nil, nil, secretList)
-	rightPane := container.NewScroll(secretDisplay)
+	keyAddButton := widget.NewButton("Add", nil)
+	keyAddButton.OnTapped = func() {
+		dialog.ShowEntryDialog("New key", "Key name", func(name string) {
+			name = strings.TrimSpace(name)
+			if _, err := new_key(name); err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
+			refreshKeys()
+		}, w)
+	}
+
+	secretAddButton := widget.NewButton("Add", nil)
+	secretAddButton.OnTapped = func() {
+		if currentRepo == "" {
+			dialog.ShowInformation("Select a repository", "Select a repository before adding a secret.", w)
+			return
+		}
+		keyNames, err := list_keys()
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		if len(keyNames) == 0 {
+			dialog.ShowInformation("No keys available", "Create a key before adding a secret.", w)
+			return
+		}
+		dialog.ShowEntryDialog("New secret", "Secret name", func(name string) {
+			name = strings.TrimSpace(name)
+			if _, err := new_secret(currentRepo, keyNames, name, ""); err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
+			refreshSecrets(currentRepo)
+		}, w)
+	}
+
+	changeButton.OnTapped = func() {
+		if currentSecret == "" {
+			dialog.ShowInformation("Select a secret", "Select a secret before changing it.", w)
+			return
+		}
+		keyNames := make([]string, 0, len(keys))
+		for _, keyName := range keys {
+			if selectedKeys[keyName] {
+				keyNames = append(keyNames, keyName)
+			}
+		}
+		if len(keyNames) == 0 {
+			dialog.ShowInformation("Select keys", "Select at least one key before changing the secret.", w)
+			return
+		}
+		if err := updateSecret(currentSecret, keyNames, secretDisplay.Text); err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		refreshSecrets(currentRepo)
+	}
+
+	repoPane := container.NewBorder(paneHeader("Repositories"), repoAddButton, nil, nil, repoList)
+	keyPane := container.NewBorder(paneHeader("Keys"), keyAddButton, nil, nil, keyList)
+	leftPane := container.NewVSplit(repoPane, keyPane)
+	leftPane.Offset = 0.4
+	middlePane := container.NewBorder(paneHeader("Secrets"), secretAddButton, nil, nil, secretList)
+	rightPane := container.NewBorder(paneHeader("Secret"), changeButton, nil, nil, secretDisplay)
 	leftMiddle := container.NewHSplit(leftPane, middlePane)
 	leftMiddle.Offset = 0.3
 	mainSplit := container.NewHSplit(leftMiddle, rightPane)
@@ -143,6 +247,22 @@ func main() {
 	w.SetContent(mainSplit)
 
 	w.ShowAndRun()
+}
+
+func paneHeader(title string) fyne.CanvasObject {
+	background := canvas.NewRectangle(theme.PrimaryColor())
+	label := canvas.NewText(title, color.Black)
+	label.TextStyle = fyne.TextStyle{Bold: true}
+	return container.NewMax(background, label)
+}
+
+func contains(values []string, value string) bool {
+	for _, candidate := range values {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
 }
 
 func secretListText(secretPath string) string {
@@ -333,9 +453,44 @@ func new_secret(repo_dir string, key_names []string, secret_name string, secret 
 
 	return secretDir, nil
 }
+
+func updateSecret(secretDir string, keyNames []string, secret string) error {
+	if len(keyNames) == 0 {
+		return fmt.Errorf("at least one key is required")
+	}
+
+	keyDir, err := keyStore()
+	if err != nil {
+		return fmt.Errorf("access key store: %w", err)
+	}
+	publicKeys := make([]string, 0, len(keyNames))
+	for _, keyName := range keyNames {
+		if err := namecheck(keyName); err != nil {
+			return err
+		}
+		publicKey, err := os.ReadFile(filepath.Join(keyDir, keyName+".pub"))
+		if err != nil {
+			return fmt.Errorf("read public key %q: %w", keyName, err)
+		}
+		publicKeys = append(publicKeys, string(publicKey))
+	}
+
+	encrypted, err := ageenc(secret, publicKeys)
+	if err != nil {
+		return fmt.Errorf("encrypt secret: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(secretDir, "enc"), []byte(encrypted), 0o600); err != nil {
+		return fmt.Errorf("write encrypted secret: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(secretDir, "acl"), []byte(strings.Join(keyNames, "\n")+"\n"), 0o600); err != nil {
+		return fmt.Errorf("write secret access list: %w", err)
+	}
+	return nil
+}
+
+// look at secret_dir/acl. find first also in keyStore
+// use that to decrypt "enc"
 func read_secret(secret_dir string) (string, error) {
-	// look at secret_dir/acl. find first also in keyStore
-	// use that to decrypt "enc"
 	keyDir, err := keyStore()
 	if err != nil {
 		return "", fmt.Errorf("cannot read secret from %q: %w", secret_dir, err)
@@ -381,14 +536,22 @@ func read_secret(secret_dir string) (string, error) {
 
 // List all keys in xdg directory or PASSA_STORE_KEYS if set
 func list_keys() ([]string, error) {
-	_, err := keyStore()
+	keyDir, err := keyStore()
 	if err != nil {
 		return nil, fmt.Errorf("cannot list keys: %w", err)
 	}
-	// TODO: list
-	// maybe enum public, private, both
-	// recursive find? or never allow keys with directory
-	return make([]string, 0, 1), nil
+	entries, err := os.ReadDir(keyDir)
+	if err != nil {
+		return nil, fmt.Errorf("list keys in %q: %w", keyDir, err)
+	}
+	keys := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".pub") {
+			continue
+		}
+		keys = append(keys, entry.Name())
+	}
+	return keys, nil
 }
 
 // list all secret directories in a repo/password store.
