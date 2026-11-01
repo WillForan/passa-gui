@@ -269,6 +269,10 @@ func find_pubkey(keyName string, repo_dir string) (string, error) {
 }
 
 func new_secret(repo_dir string, key_names []string, secret_name string, secret string) (string, error) {
+	return newSecretWithPublicKeys(repo_dir, key_names, secret_name, secret, nil)
+}
+
+func newSecretWithPublicKeys(repo_dir string, key_names []string, secret_name string, secret string, publicKeyOverrides map[string]string) (string, error) {
 	if err := namecheck(secret_name); err != nil {
 		return "", fmt.Errorf("invalid secret name %q: %w", secret_name, err)
 	}
@@ -281,11 +285,15 @@ func new_secret(repo_dir string, key_names []string, secret_name string, secret 
 		if namecheck(keyName) != nil {
 			return "", fmt.Errorf("invalid key name %q", keyName)
 		}
-		publicKey, err := find_pubkey(keyName, repo_dir)
-		if err != nil {
-			return "", fmt.Errorf("read public key %q: %w", keyName, err)
+		publicKey := publicKeyOverrides[keyName]
+		if publicKey == "" {
+			var err error
+			publicKey, err = find_pubkey(keyName, repo_dir)
+			if err != nil {
+				return "", fmt.Errorf("read public key %q: %w", keyName, err)
+			}
 		}
-		publicKeys = append(publicKeys, string(publicKey))
+		publicKeys = append(publicKeys, publicKey)
 	}
 
 	encrypted, err := ageenc(secret, publicKeys)
@@ -319,6 +327,10 @@ func new_secret(repo_dir string, key_names []string, secret_name string, secret 
 }
 
 func updateSecret(secretDir string, keyNames []string, secret string) error {
+	return updateSecretWithPublicKeys(secretDir, keyNames, secret, nil)
+}
+
+func updateSecretWithPublicKeys(secretDir string, keyNames []string, secret string, publicKeyOverrides map[string]string) error {
 	if len(keyNames) == 0 {
 		return fmt.Errorf("at least one key is required")
 	}
@@ -328,11 +340,15 @@ func updateSecret(secretDir string, keyNames []string, secret string) error {
 		if err := namecheck(keyName); err != nil {
 			return err
 		}
-		publicKey, err := find_pubkey(keyName, "") // NOTE: no repo name avalable given
-		if err != nil {
-			return fmt.Errorf("read public key %q: %w", keyName, err)
+		publicKey := publicKeyOverrides[keyName]
+		if publicKey == "" {
+			var err error
+			publicKey, err = find_pubkey(keyName, "") // NOTE: no repo name avalable given
+			if err != nil {
+				return fmt.Errorf("read public key %q: %w", keyName, err)
+			}
 		}
-		publicKeys = append(publicKeys, string(publicKey))
+		publicKeys = append(publicKeys, publicKey)
 	}
 
 	encrypted, err := ageenc(secret, publicKeys)
@@ -404,6 +420,14 @@ func formatACL(keyNames, publicKeys []string) string {
 func aclKeyName(line string) string {
 	fields := strings.SplitN(line, "\t", 2)
 	return strings.TrimSpace(fields[0])
+}
+
+func aclPublicKey(line string) string {
+	fields := strings.SplitN(line, "\t", 2)
+	if len(fields) != 2 {
+		return ""
+	}
+	return strings.TrimSpace(fields[1])
 }
 
 // look at secret_dir/acl. find first also in keyStore

@@ -56,13 +56,18 @@ func main() {
 		keys = []string{}
 	}
 	selectedKeys := make(map[string]bool)
+	publicOnlyKeys := make(map[string]string)
 	keyList := widget.NewList(
 		func() int { return len(keys) },
 		func() fyne.CanvasObject { return widget.NewCheck("", nil) },
 		func(id widget.ListItemID, object fyne.CanvasObject) {
 			check := object.(*widget.Check)
 			keyName := keys[id]
-			check.SetText(keyName)
+			displayName := keyName
+			if _, ok := publicOnlyKeys[keyName]; ok {
+				displayName += " (pub only)"
+			}
+			check.SetText(displayName)
 			check.SetChecked(selectedKeys[keyName])
 			check.OnChanged = func(checked bool) {
 				selectedKeys[keyName] = checked
@@ -135,6 +140,13 @@ func main() {
 			return
 		}
 		keys = updated
+		for keyName := range publicOnlyKeys {
+			if contains(keys, keyName) {
+				delete(publicOnlyKeys, keyName)
+			} else {
+				keys = append(keys, keyName)
+			}
+		}
 		for keyName := range selectedKeys {
 			if !contains(keys, keyName) {
 				delete(selectedKeys, keyName)
@@ -186,6 +198,8 @@ func main() {
 			dialog.ShowError(err, w)
 			return
 		}
+		publicOnlyKeys = make(map[string]string)
+		refreshKeys()
 		acl, err := os.ReadFile(filepath.Join(secrets[id-1], "acl"))
 		if err != nil {
 			dialog.ShowError(err, w)
@@ -193,7 +207,17 @@ func main() {
 		}
 		selectedKeys = make(map[string]bool)
 		for _, line := range strings.Split(string(acl), "\n") {
-			if keyName := aclKeyName(line); keyName != "" && contains(keys, keyName) {
+			keyName := aclKeyName(line)
+			if keyName == "" {
+				continue
+			}
+			if !contains(keys, keyName) {
+				if publicKey := aclPublicKey(line); publicKey != "" {
+					publicOnlyKeys[keyName] = publicKey
+					keys = append(keys, keyName)
+				}
+			}
+			if contains(keys, keyName) {
 				selectedKeys[keyName] = true
 			}
 		}
@@ -281,7 +305,7 @@ func main() {
 		}
 		dialog.ShowEntryDialog("New secret", "Secret name", func(name string) {
 			name = strings.TrimSpace(name)
-			if _, err := new_secret(currentRepo, keyNames, name, ""); err != nil {
+			if _, err := newSecretWithPublicKeys(currentRepo, keyNames, name, "", publicOnlyKeys); err != nil {
 				dialog.ShowError(err, w)
 				return
 			}
@@ -304,7 +328,7 @@ func main() {
 			dialog.ShowInformation("Select keys", "Select at least one key before changing the secret.", w)
 			return
 		}
-		if err := updateSecret(currentSecret, keyNames, secretDisplay.Text); err != nil {
+		if err := updateSecretWithPublicKeys(currentSecret, keyNames, secretDisplay.Text, publicOnlyKeys); err != nil {
 			dialog.ShowError(err, w)
 			return
 		}
