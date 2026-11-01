@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	filippo.io/age v1.3.2
 	fyne.io/fyne/v2 v2.8.2
+	github.com/BurntSushi/toml v1.6.0
 	github.com/adrg/xdg v0.5.3
 	github.com/go-git/go-git/v6 v6.0.0-beta.1
 )
@@ -12,7 +13,6 @@ require (
 require (
 	filippo.io/hpke v0.4.0 // indirect
 	fyne.io/systray v1.12.3-0.20260810170012-af4e8e793ec4 // indirect
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/FyshOS/fancyfs v0.0.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.5.2 // indirect

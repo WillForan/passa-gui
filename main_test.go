@@ -82,6 +82,36 @@ func TestAgeencEncryptsForAllRecipients(t *testing.T) {
 	}
 }
 
+func TestLoadConfigFromWorkingDirectory(t *testing.T) {
+	configDir := t.TempDir()
+	repoDir := filepath.Join(configDir, "repo")
+	keyDir := filepath.Join(configDir, "keys")
+	if err := os.WriteFile(filepath.Join(configDir, "passa.toml"), []byte(
+		"repos = [\"./repo\"]\nkeystores = [\"./keys\"]\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	originalWorkDir := workDir
+	workDir = func() string { return configDir }
+	t.Cleanup(func() { workDir = originalWorkDir })
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Repos) != 1 || cfg.Repos[0] != "./repo" {
+		t.Fatalf("config repos = %v", cfg.Repos)
+	}
+	paths := configuredPaths(cfg.Repos)
+	if len(paths) != 1 || paths[0] != repoDir {
+		t.Fatalf("configured repo paths = %v", paths)
+	}
+	if paths[0] == keyDir {
+		t.Fatal("repo and keystore paths unexpectedly match")
+	}
+}
+
 func TestGenerateTOTP(t *testing.T) {
 	for _, secret := range []string{
 		"JBSWY3DPEHPK3PXP",
@@ -219,6 +249,9 @@ func TestNewSecretWritesEncryptedSecretAndACL(t *testing.T) {
 
 func TestListReposReturnsRepositoryDirectories(t *testing.T) {
 	dataHome := t.TempDir()
+	originalWorkDir := workDir
+	workDir = func() string { return t.TempDir() }
+	t.Cleanup(func() { workDir = originalWorkDir })
 	originalDataHome := xdg.DataHome
 	xdg.DataHome = dataHome
 	t.Cleanup(func() {

@@ -142,6 +142,20 @@ func keyStore() (string, error) {
 	return keyDir, nil
 }
 
+func keyStores() ([]string, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	stores := []string{os.Getenv("PASSA_STORE_KEYS")}
+	stores = append(stores, configuredPaths(cfg.Keystores)...)
+	defaultStore := path.Join(xdg.DataHome, "passa-gui", ".keys")
+	if stores[0] == "" {
+		stores[0] = defaultStore
+	}
+	return stores, nil
+}
+
 func new_repo(repo_name string) (string, error) {
 	// create a new password store by name
 	storeDir := path.Join(xdg.DataHome, "passa-gui", repo_name)
@@ -208,31 +222,35 @@ func find_pubkey(keyName string, repo_dir string) (string, error) {
 	}
 
 	// (2) check key store for pub
-	keyDir, err := keyStore()
+	stores, err := keyStores()
 	if err != nil {
-		return "", fmt.Errorf("access key store: %w", err)
+		return "", fmt.Errorf("access key stores: %w", err)
 	}
-	pubkey_file = path.Join(keyDir, keyName+".pub")
-	if _, err := os.Stat(pubkey_file); err == nil {
-		pubKey, err := os.ReadFile(pubkey_file)
-		if err != nil {
-			return "", err
+	for _, keyDir := range stores {
+		pubkey_file = path.Join(keyDir, keyName+".pub")
+		if _, err := os.Stat(pubkey_file); err == nil {
+			pubKey, err := os.ReadFile(pubkey_file)
+			if err != nil {
+				return "", err
+			}
+			return string(pubKey), nil
 		}
-		return string(pubKey), nil
 	}
 
 	// (3) read from private key
-	privateKey, err := os.ReadFile(path.Join(keyDir, keyName))
-	if err != nil {
-		return "", fmt.Errorf("failed to find a public key for %s: %w", keyName, err)
-	}
-	for _, line := range strings.Split(string(privateKey), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "# public key:") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "# public key:")), nil
+	for _, keyDir := range stores {
+		privateKey, err := os.ReadFile(path.Join(keyDir, keyName))
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(privateKey), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "# public key:") {
+				return strings.TrimSpace(strings.TrimPrefix(line, "# public key:")), nil
+			}
 		}
 	}
-	return "", fmt.Errorf("failed to find %q public key: private key has no public-key comment", keyName)
+	return "", fmt.Errorf("failed to find public key for %q", keyName)
 }
 
 func new_secret(repo_dir string, key_names []string, secret_name string, secret string) (string, error) {
@@ -335,16 +353,22 @@ func read_secret(secret_dir string) (string, error) {
 		if keyName == "" {
 			continue
 		}
-		keyDir, keyErr := keyStore()
-		if keyErr != nil {
-			return "", fmt.Errorf("access key store: %w", keyErr)
-		}
-		privateKey, err := os.ReadFile(path.Join(keyDir, keyName))
-		if os.IsNotExist(err) {
-			continue
-		}
+		stores, err := keyStores()
 		if err != nil {
-			return "", fmt.Errorf("read private key %q: %w", keyName, err)
+			return "", fmt.Errorf("access key stores: %w", err)
+		}
+		var privateKey []byte
+		for _, keyDir := range stores {
+			privateKey, err = os.ReadFile(path.Join(keyDir, keyName))
+			if err == nil {
+				break
+			}
+			if !os.IsNotExist(err) {
+				return "", fmt.Errorf("read private key %q: %w", keyName, err)
+			}
+		}
+		if len(privateKey) == 0 {
+			continue
 		}
 
 		decrypted, err := agedecrypt(string(privateKey), string(encrypted))
@@ -362,20 +386,27 @@ func read_secret(secret_dir string) (string, error) {
 
 // List all keys in xdg directory or PASSA_STORE_KEYS if set
 func list_keys() ([]string, error) {
-	keyDir, err := keyStore()
+	stores, err := keyStores()
 	if err != nil {
 		return nil, fmt.Errorf("cannot list keys: %w", err)
 	}
-	entries, err := os.ReadDir(keyDir)
-	if err != nil {
-		return nil, fmt.Errorf("list keys in %q: %w", keyDir, err)
-	}
-	keys := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".pub") {
+	seen := make(map[string]bool)
+	keys := make([]string, 0)
+	for _, keyDir := range stores {
+		entries, err := os.ReadDir(keyDir)
+		if os.IsNotExist(err) {
 			continue
 		}
-		keys = append(keys, entry.Name())
+		if err != nil {
+			return nil, fmt.Errorf("list keys in %q: %w", keyDir, err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || strings.HasSuffix(entry.Name(), ".pub") || seen[entry.Name()] {
+				continue
+			}
+			seen[entry.Name()] = true
+			keys = append(keys, entry.Name())
+		}
 	}
 	return keys, nil
 }
@@ -403,20 +434,35 @@ func list_secrets(repo_path string) ([]string, error) {
 // list all secrets in a repo/password store
 func list_repos() ([]string, error) {
 	storeDir := path.Join(xdg.DataHome, "passa-gui")
-	entries, err := os.ReadDir(storeDir)
-	if os.IsNotExist(err) {
-		return []string{}, nil
-	}
+	cfg, err := loadConfig()
 	if err != nil {
-		return nil, fmt.Errorf("list repositories in %q: %w", storeDir, err)
+		return nil, err
 	}
-
-	repos := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == ".keys" {
+	repos := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, repo := range configuredPaths(cfg.Repos) {
+		info, err := os.Stat(repo)
+		if os.IsNotExist(err) {
 			continue
 		}
-		repos = append(repos, path.Join(storeDir, entry.Name()))
+		if err != nil {
+			return nil, fmt.Errorf("stat repository %q: %w", repo, err)
+		}
+		if info.IsDir() && !seen[repo] {
+			repos = append(repos, repo)
+			seen[repo] = true
+		}
+	}
+
+	entries, err := os.ReadDir(storeDir)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("list repositories in %q: %w", storeDir, err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && entry.Name() != ".keys" {
+			repos = append(repos, path.Join(storeDir, entry.Name()))
+			seen[path.Join(storeDir, entry.Name())] = true
+		}
 	}
 	return repos, nil
 }
