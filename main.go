@@ -13,8 +13,10 @@ import (
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	"github.com/adrg/xdg"
 	"github.com/go-git/go-git/v6"
@@ -46,17 +48,113 @@ enc like:
 
 func main() {
 	a := app.New()
-	w := a.NewWindow("Hello")
+	w := a.NewWindow("Passa")
+	w.Resize(fyne.NewSize(1100, 700))
 
-	hello := widget.NewLabel("Hello Fyne!")
-	w.SetContent(container.NewVBox(
-		hello,
-		widget.NewButton("Hi!", func() {
-			hello.SetText("Welcome :)")
-		}),
-	))
+	repos, err := list_repos()
+	if err != nil {
+		repos = []string{}
+	}
+	repoList := widget.NewList(
+		func() int { return len(repos) },
+		func() fyne.CanvasObject { return widget.NewLabel("") },
+		func(id widget.ListItemID, object fyne.CanvasObject) {
+			object.(*widget.Label).SetText(filepath.Base(repos[id]))
+		},
+	)
+
+	secrets := []string{}
+	secretList := widget.NewList(
+		func() int { return len(secrets) },
+		func() fyne.CanvasObject { return widget.NewLabel("") },
+		func(id widget.ListItemID, object fyne.CanvasObject) {
+			object.(*widget.Label).SetText(secretListText(secrets[id]))
+		},
+	)
+	secretDisplay := widget.NewLabel("")
+	secretDisplay.Wrapping = fyne.TextWrapWord
+
+	refreshRepos := func() {
+		updated, err := list_repos()
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		repos = updated
+		repoList.Refresh()
+	}
+	refreshSecrets := func(repoPath string) {
+		updated, err := list_secrets(repoPath)
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		secrets = updated
+		secretList.Refresh()
+		secretDisplay.SetText("")
+	}
+
+	repoList.OnSelected = func(id widget.ListItemID) {
+		if id < len(repos) {
+			refreshSecrets(repos[id])
+		}
+	}
+	secretList.OnSelected = func(id widget.ListItemID) {
+		if id >= len(secrets) {
+			return
+		}
+		secret, err := read_secret(secrets[id])
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		secretDisplay.SetText(secret)
+	}
+
+	addButton := widget.NewButton("Add", nil)
+	addButton.OnTapped = func() {
+		menu := fyne.NewMenu("",
+			fyne.NewMenuItem("Store from directory", func() {
+				dialog.ShowInformation("Not implemented", "Storing an existing directory is not implemented yet.", w)
+			}),
+			fyne.NewMenuItem("Import by clone", func() {
+				dialog.ShowInformation("Not implemented", "Importing a repository by clone is not implemented yet.", w)
+			}),
+			fyne.NewMenuItem("New", func() {
+				dialog.ShowEntryDialog("New repository", "Repository name", func(name string) {
+					if _, err := new_repo(strings.TrimSpace(name)); err != nil {
+						dialog.ShowError(err, w)
+						return
+					}
+					refreshRepos()
+				}, w)
+			}),
+		)
+		widget.ShowPopUpMenuAtRelativePosition(menu, w.Canvas(), fyne.NewPos(0, addButton.Size().Height), addButton)
+	}
+
+	leftPane := container.NewBorder(nil, addButton, nil, nil, repoList)
+	middlePane := container.NewBorder(nil, nil, nil, nil, secretList)
+	rightPane := container.NewScroll(secretDisplay)
+	leftMiddle := container.NewHSplit(leftPane, middlePane)
+	leftMiddle.Offset = 0.3
+	mainSplit := container.NewHSplit(leftMiddle, rightPane)
+	mainSplit.Offset = 0.5
+	w.SetContent(mainSplit)
 
 	w.ShowAndRun()
+}
+
+func secretListText(secretPath string) string {
+	acl, err := os.ReadFile(filepath.Join(secretPath, "acl"))
+	if err != nil {
+		return filepath.Base(secretPath)
+	}
+	keys := strings.Fields(string(acl))
+	if len(keys) == 0 {
+		return filepath.Base(secretPath)
+	}
+	return fmt.Sprintf("%s (%s)", filepath.Base(secretPath), strings.Join(keys, ", "))
 }
 
 func ageenc(data string, publicKeys []string) (string, error) {
