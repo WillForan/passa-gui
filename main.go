@@ -196,13 +196,14 @@ func main() {
 			dialog.ShowInformation("Select a repository", "Select a repository before adding a secret.", w)
 			return
 		}
-		keyNames, err := list_keys()
-		if err != nil {
-			dialog.ShowError(err, w)
-			return
+		keyNames := make([]string, 0, len(keys))
+		for _, keyName := range keys {
+			if selectedKeys[keyName] {
+				keyNames = append(keyNames, keyName)
+			}
 		}
 		if len(keyNames) == 0 {
-			dialog.ShowInformation("No keys available", "Create a key before adding a secret.", w)
+			dialog.ShowInformation("Select keys", "Select at least one key before adding a secret.", w)
 			return
 		}
 		dialog.ShowEntryDialog("New secret", "Secret name", func(name string) {
