@@ -1,6 +1,6 @@
 .PHONY: tidy all
 all: passa-gui .make/test.log
-passa-gui: go.sum main.go
+passa-gui: go.sum main.go backend.go
 	go build
 
 go.sum: go.mod
