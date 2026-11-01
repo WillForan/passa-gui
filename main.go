@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"image/color"
@@ -345,6 +346,37 @@ func main() {
 
 	repoPane := container.NewBorder(paneHeader("Repositories"), repoAddButton, nil, nil, repoList)
 	keyPane := container.NewBorder(paneHeader("Keys"), keyAddButton, nil, nil, keyList)
+	w.SetOnDropped(func(position fyne.Position, uris []fyne.URI) {
+		keyPanePosition := keyPane.Position()
+		keyPaneSize := keyPane.Size()
+		if position.X < keyPanePosition.X || position.Y < keyPanePosition.Y ||
+			position.X > keyPanePosition.X+keyPaneSize.Width ||
+			position.Y > keyPanePosition.Y+keyPaneSize.Height {
+			return
+		}
+		for _, uri := range uris {
+			reader, err := storage.Reader(uri)
+			if err != nil {
+				dialog.ShowError(err, w)
+				continue
+			}
+			data, readErr := io.ReadAll(reader)
+			closeErr := reader.Close()
+			if readErr != nil {
+				dialog.ShowError(readErr, w)
+				continue
+			}
+			if closeErr != nil {
+				dialog.ShowError(closeErr, w)
+				continue
+			}
+			if _, err := import_key(uri.Name(), string(data)); err != nil {
+				dialog.ShowError(err, w)
+				continue
+			}
+			refreshKeys()
+		}
+	})
 	leftPane := container.NewVSplit(repoPane, keyPane)
 	leftPane.Offset = 0.4
 	middlePane := container.NewBorder(paneHeader("Secrets"), secretAddButton, nil, nil, secretList)
