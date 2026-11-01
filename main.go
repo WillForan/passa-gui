@@ -233,7 +233,12 @@ func main() {
 			return
 		}
 		a.Clipboard().SetContent(code)
-		dialog.ShowInformation("TOTP", fmt.Sprintf("Generated code: %s\nCopied to clipboard.", code), w)
+		codeLabel := widget.NewLabel(code)
+		codeLabel.Selectable = true
+		dialog.ShowCustom("TOTP", "Close", container.NewVBox(
+			codeLabel,
+			widget.NewLabel("Copied to clipboard."),
+		), w)
 	}
 	copyButton.OnTapped = func() {
 		if currentSecret == "" {
