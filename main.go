@@ -180,6 +180,18 @@ func main() {
 			dialog.ShowError(err, w)
 			return
 		}
+		acl, err := os.ReadFile(filepath.Join(secrets[id-1], "acl"))
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		selectedKeys = make(map[string]bool)
+		for _, line := range strings.Split(string(acl), "\n") {
+			if keyName := aclKeyName(line); keyName != "" && contains(keys, keyName) {
+				selectedKeys[keyName] = true
+			}
+		}
+		keyList.Refresh()
 		currentSecret = secrets[id-1]
 		secretDisplay.SetText(secret)
 		secretDisplay.Refresh()
