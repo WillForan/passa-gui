@@ -564,6 +564,21 @@ func list_repos() ([]string, error) {
 	return repos, nil
 }
 
+func listSingleRepo(repoPath string) ([]string, error) {
+	absolutePath, err := filepath.Abs(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("resolve repository path %q: %w", repoPath, err)
+	}
+	info, err := os.Stat(absolutePath)
+	if err != nil {
+		return nil, fmt.Errorf("stat repository %q: %w", repoPath, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("repository path %q is not a directory", repoPath)
+	}
+	return []string{absolutePath}, nil
+}
+
 // find and read all acl files, counting each non-empty key name.
 func repo_acls(repo_paths []string) (map[string]int, error) {
 	counts := make(map[string]int)

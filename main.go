@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,12 +45,22 @@ enc like:
 */
 
 func main() {
+	repoPath := flag.String("repo", "", "load only the specified repository path")
+	flag.Parse()
+
 	a := app.New()
 	w := a.NewWindow("Passa")
 	w.Resize(fyne.NewSize(1100, 700))
 
-	repos, err := list_repos()
+	var repos []string
+	var err error
+	if *repoPath != "" {
+		repos, err = listSingleRepo(*repoPath)
+	} else {
+		repos, err = list_repos()
+	}
 	if err != nil {
+		log.Printf("cannot load repositories: %v", err)
 		repos = []string{}
 	}
 	keys, err := list_keys()

@@ -28,7 +28,7 @@ The GUI uses fyne.io with golang and was largely constructed with Github copilot
 
 ## Advanced
 ```
-PASSA_STORE_KEYS=example/keys/ ./passa-gui
+PASSA_STORE_KEYS=example/keys/ ./passa-gui -repo example/store/Movies
 ```
 
 
