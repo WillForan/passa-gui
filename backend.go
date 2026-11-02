@@ -481,6 +481,21 @@ func read_secret(secret_dir string) (string, error) {
 	return "", fmt.Errorf("no matching private key for secret %q", secret_dir)
 }
 
+func decodeSecretPath(encPath string) (string, error) {
+	encPath = filepath.Clean(encPath)
+	if filepath.Base(encPath) != "enc" {
+		return "", fmt.Errorf("secret path %q must refer to an enc file", encPath)
+	}
+	info, err := os.Stat(encPath)
+	if err != nil {
+		return "", fmt.Errorf("stat encrypted secret %q: %w", encPath, err)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("encrypted secret path %q is a directory", encPath)
+	}
+	return read_secret(filepath.Dir(encPath))
+}
+
 // List all keys in xdg directory or PASSA_STORE_KEYS if set
 func list_keys() ([]string, error) {
 	stores, err := keyStores()

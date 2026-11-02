@@ -27,8 +27,15 @@ The GUI uses fyne.io with golang and was largely constructed with Github copilot
 > Rotating the key alone is insufficient, especially with git history.
 
 ## Advanced
+
 ```
-PASSA_STORE_KEYS=example/keys/ ./passa-gui -repo example/store/Movies
+# launch GUI with keys outside of XDG and for a specific repo
+PASSA_STORE_KEYS=example/keys/ \
+  ./passa-gui -repo example/store/Movies
+
+# decode secret
+PASSA_STORE_KEYS=example/keys/ \
+  ./passa-gui dec example/store/Movies/luggage/enc # 12345
 ```
 
 

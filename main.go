@@ -45,6 +45,20 @@ enc like:
 */
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "dec" {
+		if len(os.Args) != 3 {
+			fmt.Fprintln(os.Stderr, "usage: passa-gui dec path/to/enc")
+			os.Exit(2)
+		}
+		secret, err := decodeSecretPath(os.Args[2])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Print(secret)
+		return
+	}
+
 	repoPath := flag.String("repo", "", "load only the specified repository path")
 	flag.Parse()
 

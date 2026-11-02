@@ -285,6 +285,31 @@ func TestNewSecretWritesEncryptedSecretAndACL(t *testing.T) {
 	}
 }
 
+func TestDecodeSecretPath(t *testing.T) {
+	keyDir := filepath.Join(t.TempDir(), "keys")
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	t.Setenv("PASSA_STORE_KEYS", keyDir)
+
+	if _, err := new_key("test-key"); err != nil {
+		t.Fatal(err)
+	}
+	secretDir, err := new_secret(repoDir, []string{"test-key"}, "example", "secret value")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := decodeSecretPath(filepath.Join(secretDir, "enc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "secret value" {
+		t.Fatalf("decodeSecretPath() = %q, want %q", got, "secret value")
+	}
+	if _, err := decodeSecretPath(filepath.Join(secretDir, "acl")); err == nil {
+		t.Fatal("decodeSecretPath() accepted a non-enc path")
+	}
+}
+
 func TestListReposReturnsRepositoryDirectories(t *testing.T) {
 	dataHome := t.TempDir()
 	originalWorkDir := workDir
