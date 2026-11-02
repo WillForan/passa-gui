@@ -26,6 +26,10 @@ The GUI uses fyne.io with golang and was largely constructed with Github copilot
 > [NOTE!] A compromise key requires regenerating the key and updating all passwords where it is a recipient.
 > Rotating the key alone is insufficient, especially with git history.
 
+System is not zero-trust. 
+  * Anyone with file access can overwrite/zero-out a secret. 
+  * Anyone with existing private-key based secret access and additinal public keys can add additional recipients .
+
 ## Advanced
 
 ```
@@ -38,4 +42,16 @@ PASSA_STORE_KEYS=example/keys/ \
   ./passa-gui dec example/store/Movies/luggage/enc # 12345
 ```
 
+## TODO
+  * right panel display textarea and update button for `secret/readme.md`
+  * show git log at secret (acl and enc)
+  * import `*.pub` only for adding permissions
+  * git import
+  * fix arrow keys
+  * type to search
+  * show path to key store / context menu to copy
+  * import uses copy instead of read+regen
+  * cli option
+    * `totp` 
+    * key import
 
